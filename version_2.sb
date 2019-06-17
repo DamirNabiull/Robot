@@ -1,0 +1,219 @@
+Program.Delay(100)
+d = 8.61
+R = 0
+k_comp = 0.4
+k_ir = 20
+k_p = 16
+k_pd = 10
+kp_str = 0.25
+errOld = 0
+button = 0
+error = 0
+mid = 0
+compass = 0
+alpha = 0
+
+'For_Odom
+oldB = 0
+oldC = 0
+goodX = 250
+goodY = 180
+maxX = 500
+maxY = 400
+xAdd = 250
+yAdd = 220
+sign = 0
+S = 0
+x = 0
+y = 0
+
+
+
+Sub scan
+  handle = EV3File.OpenRead("Calibrationgoalkeeper.txt")
+  limstr = EV3File.ConvertToNumber(EV3File.ReadLine(handle)) 
+  mid = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  compassmiddle = mid
+  compasleftlimit = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  compasrightlimit = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  senblack = 16
+  EV3File.Close(handle)  
+EndSub
+
+
+
+Sub sub_compass
+  While "True"
+    sendarraycom[0] = 66
+    compass_array = Sensor.CommunicateI2C(2, 1, 1, 2, sendarraycom)
+    compass = compass_array[0]*2 + compass_array[1]
+    err = compass - alpha
+    If err/180 > 0 Then
+      number = Math.Floor(err/180)
+    Else
+      number = Math.Ceiling(err/180)
+    EndIf
+    error = err - number * 360
+  EndWhile
+EndSub
+  
+  
+  
+  Sub sub_cvet
+    While "True"
+      Sensor.SetMode(4,4)
+      sen = Sensor.ReadRawValue(4,1)
+    EndWhile
+EndSub
+
+
+
+Sub sub_seeker
+    While "True"
+    sendarrayseek[0] = 73 	
+    irseeker_array = Sensor.CommunicateI2C(1,8,1,6,sendarrayseek)
+    dir = irseeker_array[0]
+    strenght1 = irseeker_array[1]
+    strenght2 = irseeker_array[2]
+    strenght3 = irseeker_array[3]
+    strenght4 = irseeker_array[4]
+    strenght5 = irseeker_array[5]
+    If Math.Remainder(dir,2) = 0 Then
+      str = (strenght1 + strenght2 + strenght3 + strenght4 + strenght5)/1.75
+    Else
+      str = strenght1 + strenght2 + strenght3 + strenght4 + strenght5
+    EndIf
+  EndWhile
+EndSub
+
+
+
+Sub sub_button
+  While "True"
+    button = Sensor.ReadPercent(3)
+  EndWhile
+EndSub
+
+
+
+Sub updEnc
+  oldB = Motor.GetCount("B")
+  oldC = Motor.GetCount("C")
+EndSub
+
+
+
+Sub calcDist
+  dist = (Motor.GetCount("B") - oldB - oldC + Motor.GetCount("C"))/2
+EndSub
+
+
+
+Sub povorot_na_gradus
+  Time_pov = EV3.Time + 1000
+  While error > 3 Or error < -3 Or EV3.Time < Time_pov
+    Motor.StartPower("C",0 + error)
+    Motor.StartPower("B",0 - error)
+  EndWhile
+  Motor.Stop("BC", "True")
+EndSub
+
+
+
+Sub getsign
+  If x > 0 Then
+    sign = 1
+  Else 
+    sign = -1
+  EndIf
+EndSub
+
+
+
+Sub sub_odom
+  While "True"
+    updEnc()
+    While "True"
+      alpha = compassmiddle
+      rad = Math.GetRadians(error)
+      calcDist()
+      x = x + dist*Math.Cos(rad)
+      y = y + dist*Math.Sin(rad)
+      Program.Delay(10)
+      updEnc()
+    EndWhile
+  EndWhile
+EndSub
+
+
+
+Sub calcUgol
+  alpha = compassmiddle
+  ugol = 0
+  If x > 0 Then
+    ugol = Math.GetDegrees(Math.ArcTan(y/x))
+  Else
+    If y > 0 Then
+      ugol = Math.GetDegrees(Math.ArcTan(y/x) + 180)
+    Else
+      ugol = Math.GetDegrees(Math.ArcTan(y/x) - 180)
+    EndIf
+  EndIf
+  ugol = Math.Remainder(compassmiddle + ugol + 360, 360)
+EndSub
+
+
+scan()
+Thread.Run = sub_compass
+Thread.Run = sub_cvet
+Thread.Run = sub_seeker
+Thread.Run = sub_button
+Thread.Run = sub_odom
+
+Program.Delay(50)
+
+While "True"
+  loop = 0
+  k_seek_slezsh = 0
+  alpha = compassmiddle
+  While loop < 1
+    If str > limstr Then
+      loop = loop + 1
+    Else
+      loop = 0
+    EndIf
+    If str + 10 > limstr And Math.Abs(error) > 45 Then
+      Goto viezd  
+    EndIf
+    
+    If dir > 4 And dir < 8 Then
+      U = (strenght4 - strenght3)*kp_str
+    Else
+      U = (dir - 6) * k_ir
+    EndIf
+    Motor.StartPower("C",0 - U)
+    Motor.StartPower("B",0 + U)
+  EndWhile
+  
+  viezd:
+  ob = Motor.GetCount("B")
+  oc = Motor.GetCount("C")
+  dlina = 0
+  While sen > senblack
+    V = 100
+    If dir > 4 And dir < 8 Then
+      U = (strenght4 - strenght3)*kp_str
+    Else
+      U = (dir - 6) * k_ir
+    EndIf
+    
+    Motor.StartPower("D", 100)
+    Motor.StartPower("C",V - U)
+    Motor.StartPower("B",V + U)
+    dlina = (Motor.GetCount("B") - ob + Motor.GetCount("C") - oc)/2
+  EndWhile
+  Motor.Stop("BC", "True")
+  Buttons.Wait()
+  Buttons.Flush()
+  
+EndWhile

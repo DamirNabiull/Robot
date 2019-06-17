@@ -1,0 +1,5 @@
+a = Mailbox.Create(1)
+
+While "True"
+  Mailbox.Send("RUSLAN", 1, s)
+EndWhile

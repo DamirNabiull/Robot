@@ -1,0 +1,260 @@
+Program.Delay(100)
+d = 8.61
+R = 0
+V = 100
+U = 0
+k_comp = 1
+k_ir = 20
+k_p = 16
+k_pd = 10
+errOld = 0
+button = 0
+error = 0
+mid = 0
+compass = 0
+alpha = 0
+alpha_odom = 0
+old_str = 0
+lp_st = 0
+
+'For_Odom
+oldB = 0
+oldC = 0
+goodX = 100
+goodY = 40
+maxX = 450
+maxY = 350
+xAdd = 250
+yAdd = 220
+sign = 0
+S = 0
+x = 0
+y = 0
+tAdd = 300
+side = 0
+
+
+
+
+sendarraycom[0] = 66
+Sensor.SetMode(4,4)
+sendarrayseek[0] = 73
+
+
+
+Sub scan
+  handle = EV3File.OpenRead("Calibrationgoalkeeper.txt")
+  limstr = EV3File.ConvertToNumber(EV3File.ReadLine(handle)) 
+  compassmiddle = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  compasleftlimit = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  compasrightlimit = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  senblack = 16
+  alpha_odom = compassmiddle
+  EV3File.Close(handle)  
+EndSub
+
+Sub sub_compass
+  While "True"
+    compass_array = Sensor.CommunicateI2C(2, 1, 1, 2, sendarraycom)
+    compass = compass_array[0]*2 + compass_array[1]
+    error = Math.Remainder(compass - alpha + 900, 360) - 180
+    error_odom = Math.Remainder(compass - compassmiddle + 900, 360) - 180
+  EndWhile
+EndSub
+  
+Sub sub_cvet
+  While "True"
+    sen = Sensor.ReadRawValue(4,1)
+    EndWhile
+EndSub
+
+
+
+Sub sub_seeker
+  While "True"
+    irseeker_array = Sensor.CommunicateI2C(1,8,1,6,sendarrayseek)
+    dir = irseeker_array[0]
+    strenght1 = irseeker_array[1]
+    strenght2 = irseeker_array[2]
+    strenght3 = irseeker_array[3]
+    strenght4 = irseeker_array[4]
+    strenght5 = irseeker_array[5]
+    If Math.Remainder(dir,2) = 0 Then
+      str = (strenght1 + strenght2 + strenght3 + strenght4 + strenght5)/1.75
+    Else
+      str = strenght1 + strenght2 + strenght3 + strenght4 + strenght5
+    EndIf
+  EndWhile
+EndSub
+
+
+
+Sub sub_button
+  While "True"
+    button = Sensor.ReadPercent(3)
+    LCD.Clear()
+    LCD.Write(20, 20, x)
+    LCD.Write(20, 40, y)  
+  EndWhile
+EndSub
+
+
+Sub updEnc
+  oldB = Motor.GetCount("B")
+  oldC = Motor.GetCount("C")
+EndSub
+
+
+
+Sub calcDist
+  dist = (Motor.GetCount("B") - oldB - oldC + Motor.GetCount("C"))/2
+EndSub
+
+
+Sub povorot_na_gradus
+  Time_pov = EV3.Time
+  While error > 5  And EV3.Time - Time_pov < 3000 Or error < -5 And EV3.Time - Time_pov < 3000
+    Motor.StartPower("C",0 + error)
+    Motor.StartPower("B",0 - error)
+  EndWhile
+  Motor.Stop("BC", "True")
+EndSub
+
+
+Sub sub_odom
+  updEnc()
+  While "True"
+    rad = Math.GetRadians(error_odom)
+    calcDist()
+    x = x + dist*Math.Cos(rad)
+    y = y + dist*Math.Sin(rad)
+    updEnc()
+  EndWhile
+EndSub
+
+
+Sub calcUgol
+  ugol = Math.GetDegrees(Math.ArcTan(y/x))
+  ugol = Math.Remainder(compassmiddle + ugol, 360)
+EndSub
+
+
+
+scan()
+Thread.Run = sub_compass
+Thread.Run = sub_cvet
+Thread.Run = sub_seeker
+Thread.Run = sub_button
+Thread.Run = sub_odom
+
+While "True"
+  lp_st = 0
+  loop = 0
+  old_str = str
+  While lp_st < 4 And loop < 3
+    If str > limstr Then
+      loop = loop + 1
+    Else
+      loop = 0
+    EndIf
+    
+    If old_str < str And str > limstr Then
+      lp_st = lp_st + 1
+      old_str = str
+    EndIf
+
+    errseek = (dir - 6)*k_ir
+    If dir = 0 Then
+      errseek = 0
+    EndIf    
+    Motor.StartPower("C",0 - errseek)
+    Motor.StartPower("B",0 + errseek)
+  EndWhile
+  Motor.Stop("BCD", "True")
+  
+  
+  
+  
+  Motor.ResetCount("BC")
+  dlina = 0
+  While sen > senblack
+    V = 80
+    U = (dir - 6)*k_ir
+    Motor.StartPower("D", 100)
+    Motor.StartPower("C",V - U)
+    Motor.StartPower("B",V + U)
+    dlina = (Motor.GetCount("B") + Motor.GetCount("C"))/2
+  EndWhile
+  Motor.Stop("BC", "True")
+  Time = EV3.Time
+  lp_st = 0
+  While lp_st < 5 And str > limstr And EV3.Time - Time < 2000
+    If str < old_str Then
+      lp_st = lp_st + 1
+      old_str = str
+    EndIf
+  EndWhile
+  Motor.Stop("D", "True")
+  calcUgol()
+  alpha = ugol
+  povorot_na_gradus()
+  
+  V = -100
+   While Math.Abs(y) > goodY And x > goodX
+    
+    Motor.StartPower("C",V)
+    Motor.StartPower("B",V)
+    dlina = (Motor.GetCount("B") + Motor.GetCount("C"))/2
+  EndWhile
+  Motor.Stop("BC", "True")
+ 
+  LCD.Clear()
+  LCD.Write(20, 20, x)
+  LCD.Write(20, 40, y)
+  
+  alpha = compassmiddle
+  povorot_na_gradus()
+  
+  While button < 1
+    Motor.Start("BC", V)
+  EndWhile
+  Motor.Stop("BC", "True")
+  Motor.MovePower("BC", 80, 100, "True")
+  
+  If str < limstr Then
+    Buttons.Wait()
+    Buttons.Flush()
+    If y > 51 Then
+      alpha = compasleftlimit
+      povorot_na_gradus()
+      V = -80
+      While sen > senblack
+        Motor.StartPower("BC", V)
+      EndWhile
+      Motor.Stop("BC", "True")
+      Motor.MovePower("BC", 80, 300, "True")
+      alpha = compassmiddle
+      povorot_na_gradus()
+      x = 0
+      y = 0
+    ElseIf y < -51 Then
+      alpha = compasrightlimit
+      povorot_na_gradus()
+      V = -80
+      While sen > senblack
+        Motor.StartPower("BC", V)
+      EndWhile
+      Motor.Stop("BC", "True")
+      Motor.MovePower("BC", 80, 300, "True")
+      alpha = compassmiddle
+      povorot_na_gradus()
+      x = 0
+      y = 0
+    EndIf
+  EndIf
+  
+    
+    
+    
+EndWhile
+ 

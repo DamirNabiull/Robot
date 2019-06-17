@@ -1,0 +1,492 @@
+
+
+Program.Delay(100)
+'blue_a = Mailbox.Create(1)
+'blue_b = Mailbox.Create(2)
+d = 8.61
+R = 0
+V = 100
+U = 0
+k_comp = 0.6
+k_ir = 30
+k_p = 16
+k_pd = 10
+errOld = 0
+button = 0
+error = 0
+mid = 0
+compass = 0
+alpha = 0
+alpha_odom = 0
+extreme_str = 0
+const = 8.61 * Math.Pi / 360
+kp_str = 0.5
+'For_Odom
+oldB = 0
+oldC = 0
+goodX = 14
+goodY = 9
+maxX = 30
+maxY = 20
+xAdd = 2
+yAdd = 2
+sign = 0
+S = 0
+x = 0
+y = 0
+tAdd = 300
+side = 0
+
+
+
+
+sendarraycom[0] = 66
+Sensor.SetMode(4,4)
+sendarrayseek[0] = 73
+
+
+
+Sub scan
+  handle = EV3File.OpenRead("Calibrationgoalkeeper.txt")
+  limstr = EV3File.ConvertToNumber(EV3File.ReadLine(handle)) 
+  compassmiddle = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  compasleftlimit = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  compasrightlimit = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  extreme_str = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  err_l = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  err_r = EV3File.ConvertToNumber(EV3File.ReadLine(handle))
+  senblack = 18
+  alpha_odom = compassmiddle
+  EV3File.Close(handle)  
+EndSub
+
+Sub sub_compass
+  While "True"
+    compass_array = Sensor.CommunicateI2C(2, 1, 1, 2, sendarraycom)
+    compass = compass_array[0]*2 + compass_array[1]
+    error = Math.Remainder(compass - alpha + 900, 360) - 180
+  EndWhile
+EndSub
+  
+Sub sub_cvet
+  While "True"
+    sen = Sensor.ReadRawValue(4,1)
+    EndWhile
+EndSub
+
+
+
+Sub sub_seeker
+  While "True"
+    irseeker_array = Sensor.CommunicateI2C(1,8,1,6,sendarrayseek)
+    dir = irseeker_array[0]
+    strenght1 = irseeker_array[1]
+    strenght2 = irseeker_array[2]
+    strenght3 = irseeker_array[3]
+    strenght4 = irseeker_array[4]
+    strenght5 = irseeker_array[5]
+    If Math.Remainder(dir,2) = 0 Then
+      str = (strenght1 + strenght2 + strenght3 + strenght4 + strenght5)/1.75
+    Else
+      str = strenght1 + strenght2 + strenght3 + strenght4 + strenght5
+    EndIf
+  EndWhile
+EndSub
+
+
+
+
+
+
+
+
+
+Sub updEnc
+  oldB = Motor.GetCount("B")*const
+  oldC = Motor.GetCount("C")*const
+EndSub
+Sub calcDist
+  dist = (Motor.GetCount("B")*const - oldB - oldC + Motor.GetCount("C")*const)/2
+EndSub
+
+
+
+Sub povorot_na_gradus
+  Time_pov = EV3.Time
+  error = Math.Remainder(compass - alpha + 900, 360) - 180
+  While error > 5 Or error < -5
+    Motor.StartPower("C",0 + error*k_comp)
+    Motor.StartPower("B",0 - error*k_comp)
+    If EV3.Time - Time_pov > 1500 Then
+      error = 0  
+    EndIf
+    
+  EndWhile
+  Motor.Stop("BC", "True")
+EndSub
+
+
+
+Sub getsign
+  If y > 0 Then
+    sign = 1
+  Else 
+    sign = -1
+  EndIf
+EndSub
+
+
+
+Sub sub_odom
+  updEnc()
+  While "True"
+    compass_array = Sensor.CommunicateI2C(2, 1, 1, 2, sendarraycom)
+    compass = compass_array[0]*2 + compass_array[1]
+    error_odom = Math.Remainder(compass - alpha_odom + 900, 360) - 180
+    rad = Math.GetRadians(error_odom)
+    calcDist()
+    x = x + dist*Math.Cos(rad)
+    y = y + dist*Math.Sin(rad)
+    Program.Delay(1)
+    updEnc()
+  EndWhile
+EndSub
+
+
+
+Sub calcUgol
+  If x > 0 Then
+    ugol = Math.GetDegrees(Math.ArcTan(y/x))
+  Else
+    If y > 0 Then
+      ugol = Math.GetDegrees(Math.ArcTan(y/x) + 180)
+    Else
+      ugol = Math.GetDegrees(Math.ArcTan(y/x) - 180)
+    EndIf
+  EndIf
+  ugol = Math.Remainder(alpha_odom + ugol, 360)
+EndSub
+
+'Sub blue
+'  While "True"
+'    Mailbox.Send("RUSLAN", 1, x)
+'    Mailbox.Send("RUSLAN", 2, y)
+'  EndWhile
+'EndSub
+
+
+scan()
+Thread.Run = sub_compass
+Thread.Run = sub_cvet
+Thread.Run = sub_seeker
+Thread.Run = sub_odom
+
+Program.Delay(50)
+
+While "True"
+  loop = 0
+  k_seek_slezsh = 0
+  alpha = compassmiddle
+  While loop < 1
+    If str > limstr Then
+      loop = loop + 1
+    Else
+      loop = 0
+    EndIf
+    
+    If dir > 4 And dir < 8 Then
+      U = (strenght4 - strenght3)*0.9
+    Else
+      U = (dir - 6) * k_ir
+    EndIf
+    Motor.StartPower("C",0 - U)
+    Motor.StartPower("B",0 + U)
+  EndWhile
+  
+  x = 0
+  y = 0
+  maxT = 2000
+  
+  viezd:
+  While dir > 6 Or dir < 6
+    If dir > 4 And dir < 8 Then
+      U = (strenght4 - strenght3)*0.5
+    Else
+      U = (dir - 6) * k_ir
+    EndIf
+    Motor.StartPower("C",0 - U)
+    Motor.StartPower("B",0 + U)
+  EndWhile
+  loop = 0
+  fl = 0
+  Time = EV3.Time
+  alpha = compassmiddle
+  
+  
+  If error < err_l Then
+    While EV3.Time - Time > 1000
+      error_left = Math.Remainder(compass - compasleftlimit + 900, 360) - 180
+      U = -1 * (k_comp*error_left)
+      Motor.StartPower("D", 100)
+      Motor.StartPower("C",V - U)
+      Motor.StartPower("B",V + U)
+    EndWhile
+  ElseIf error > err_r Then
+    While EV3.Time - Time > 1000
+      error_right = Math.Remainder(compass - compasrightlimit + 900, 360) - 180
+      U = -1 * (k_comp*error_right)
+      Motor.StartPower("D", 100)
+      Motor.StartPower("C",V - U)
+      Motor.StartPower("B",V + U)
+    EndWhile
+  EndIf
+  
+  
+  
+  Time = EV3.Time
+  While loop  < 1
+    if sen < senblack Then
+      loop = 1
+    EndIf
+    V = 100
+    
+    
+    error_right = Math.Remainder(compass - compasrightlimit + 900, 360) - 180
+    error_left = Math.Remainder(compass - compasleftlimit + 900, 360) - 180
+    alpha = compassmiddle
+    
+    If error > err_r + 20 Then
+          alpha = compasrightlimit
+          povorot_na_gradus()
+          U = -1 * (k_comp*error)
+          fl = 1
+        ElseIf error < err_l - 20 Then
+          lpha = compasleftlimit
+          povorot_na_gradus()
+          U = -1 * (k_comp*error)
+          fl = 1
+        ElseIf dir > 4 And dir < 8 Then
+          U = (strenght4 - strenght3)*0.4
+          fl = 0
+        Else
+          U = (dir - 6) * k_ir
+          fl = 0
+        EndIf
+  
+    Motor.StartPower("D", 100)
+    Motor.StartPower("C",V - U)
+    Motor.StartPower("B",V + U)
+    If EV3.Time - Time > 1000 Then
+      loop = 2
+    EndIf
+  EndWhile
+  Motor.Stop("BC", "True")
+  LCD.Clear()
+  LCD.Write(20, 20, x)
+  LCD.Write(20, 40, y)  
+  
+  
+  loop = 0
+  maxT = 2000
+  maxX = 30
+  maxY = 20
+  a111:
+  If (Math.Abs(y) < goodY And goodX > x) Or loop < 1 Then
+    If str > extreme_str Then
+      Speaker.Tone(100, 100, 100)
+      Time = EV3.Time
+      loop = 0
+      V = 100
+      While loop < 1
+        error_right = Math.Remainder(compass - compasrightlimit + 900, 360) - 180
+        error_left = Math.Remainder(compass - compasleftlimit + 900, 360) - 180
+        alpha = compassmiddle
+        
+        If error > err_r + 20 Then
+          alpha = compasrightlimit
+          povorot_na_gradus()
+          U = -1 * (k_comp*error)
+          fl = 1
+        ElseIf error < err_l - 20 Then
+          lpha = compasleftlimit
+          povorot_na_gradus()
+          U = -1 * (k_comp*error)
+          fl = 1
+        ElseIf dir > 4 And dir < 8 Then
+          U = (strenght4 - strenght3)*0.4
+          fl = 0
+        Else
+          U = (dir - 6) * k_ir
+          fl = 0
+        EndIf
+  
+        Motor.StartPower("D", 100)
+        Motor.StartPower("C",V - U)
+        Motor.StartPower("B",V + U)
+        If EV3.Time - Time > maxT Then
+          loop = 1
+        EndIf
+        If Math.Abs(y) > maxY Or x > maxX Then
+          loop = 2
+        EndIf
+      EndWhile
+      Motor.Stop("BC", "True")
+    EndIf
+    Goto a222
+  Else
+    
+    a222:
+    button = 0
+   
+    Time = EV3.Time
+    V_2 = -20
+    loop = 0
+    While (Math.Abs(y) > goodY Or x > goodX) And loop < 1
+      
+      If V_2 > -100 Then
+        V_2 = V_2 - 2
+      EndIf
+      button = Sensor.ReadPercent(3)
+      If button > 0 Then
+        loop = 1
+      EndIf
+      If EV3.Time - Time > 4000 Then
+        loop = 2
+      EndIf
+      V = V_2
+      Motor.StartPower("C",V + error * k_comp)
+      Motor.StartPower("B",V - error * k_comp)
+    EndWhile
+    Motor.Stop("BCD", "True")
+  EndIf
+  
+  If str > extreme_str Then
+    maxX = maxX + xAdd
+    maxY = maxY + yAdd
+    maxT = maxT + tAdd
+    Goto a111
+  EndIf
+  a333:
+  alpha = compassmiddle
+  povorot_na_gradus()
+  V = -85
+  Time_back = EV3.Time
+  get_clics = 0
+  button = 0
+  time_over = 0
+  While button < 1   
+    button = Sensor.ReadPercent(3)
+    Motor.StartPower("C",V + error * k_comp)
+    Motor.StartPower("B",V - error * k_comp)
+    If Buttons.GetClicks() = "L" Then
+      get_clics = 1
+      button = 1
+    EndIf
+    If EV3.Time - Time_back > 3000 Then
+      time_over = 1
+      button = 1
+    EndIf
+  EndWhile
+  Motor.Stop("BC", "True")
+  Buttons.Flush()
+  getsign()
+  side = sign
+  flag = 0
+  If get_clics > 0 Or time_over > 0 Then
+    Motor.MovePower("BC", 80, 350, "True")
+    
+    nz1:
+    get_clics = 0
+    dlina = 0
+    dl_bool = 0
+    If side < 0 Then
+      alpha = compasleftlimit
+      povorot_na_gradus()
+      get_clics = 0
+      While sen > senblack And get_clics < 1
+        Motor.StartPower("C", -80 + error * k_comp)
+        Motor.StartPower("B", -80 - error * k_comp)
+        If Buttons.GetClicks() = "L" Then
+          get_clics = 1
+          flag = flag + 1
+        EndIf
+      EndWhile
+      
+      Buttons.Flush()
+      If get_clics < 1 Then
+        Motor.MovePower("BC", -90, 300, "True")
+        Goto a333
+      Else
+        If flag > 1 Then
+          Motor.MovePower("BC", 90, 300, "True")
+          Goto a333
+        Else
+          Goto btn1
+        EndIf
+      EndIf
+      
+    Else
+      
+      btn1:
+      alpha = compasrightlimit
+      povorot_na_gradus()
+      get_clics = 0
+      While sen > senblack And get_clics < 1
+        Motor.StartPower("C", -80 + error * k_comp)
+        Motor.StartPower("B", -80 - error * k_comp)
+        If Buttons.GetClicks() = "L" Then
+          get_clics = 1
+          flag = flag + 1
+        EndIf
+      EndWhile
+      Buttons.Flush()
+      If get_clics < 1 Then
+        Motor.MovePower("BC", -90, 300, "True")
+        Goto a333
+      Else
+        If flag > 1 Then
+          Motor.MovePower("BC", 90, 300, "True")
+          Goto a333
+        Else
+          side = side * -1
+          Goto nz1
+        EndIf
+      EndIf
+    EndIf
+  EndIf    
+  Motor.MovePower("BC", 80, 70, "True")
+  '---------------------------------------------------------------------
+  a444:
+  V = -80
+  If y < -6 Then
+    alpha = compasrightlimit
+    povorot_na_gradus()
+    Time_ss = EV3.Time
+    While sen > senblack And EV3.Time - Time_ss < 3000
+      Motor.StartPower("C",V)
+      Motor.StartPower("B",V)
+    EndWhile
+    Motor.Stop("BC", "True")
+    Motor.MovePower("BC", 80, 410, "True")
+    alpha = compassmiddle
+    povorot_na_gradus()
+    x = 0
+    y = 0
+  ElseIf y > 6 Then
+    alpha = compasleftlimit
+    povorot_na_gradus()
+    Time_ss = EV3.Time
+    While sen > senblack And EV3.Time - Time_ss < 3000
+      Motor.StartPower("C",V)
+      Motor.StartPower("B",V)
+    EndWhile
+    Motor.Stop("BC", "True")
+    Motor.MovePower("BC", 80, 410, "True")
+    alpha = compassmiddle
+    povorot_na_gradus()
+    x = 0
+    y = 0
+  EndIf
+  
+  
+EndWhile

@@ -1,0 +1,21 @@
+a = Mailbox.Create(1)
+b = Mailbox.Create(2)
+
+Sub blue
+  While "True"
+    fi = Mailbox.Receive(a)
+    x = EV3File.ConvertToNumber(fi)
+    se = Mailbox.Receive(b)
+    y = EV3File.ConvertToNumber(se)    
+  EndWhile 
+EndSub
+
+Thread.Run = blue
+While "True"
+  LCD.Clear()
+  LCD.Write(20, 20, x)
+  LCD.Write(20, 40, y)
+EndWhile
+
+
+

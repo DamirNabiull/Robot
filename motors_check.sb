@@ -1,0 +1,15 @@
+Time = EV3.Time
+V = 100
+While EV3.Time - Time < 2000
+  
+  Motor.StartPower("C", 100)
+  Motor.StartPower("B", 100)
+EndWhile
+LCD.Clear()
+a = Motor.GetCount("B")
+c = Motor.GetCount("C")
+LCD.Write(20, 20, a)
+LCD.write(20, 40, c)
+
+Motor.Stop("BC", "True")
+Buttons.Wait()
