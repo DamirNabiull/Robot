@@ -1,5 +1,6 @@
 a = Mailbox.Create(1)
+s = "11"
 
 While "True"
-  Mailbox.Send("RUSLAN", 1, s)
+  Mailbox.Send("RUSLAN", a, s)
 EndWhile
